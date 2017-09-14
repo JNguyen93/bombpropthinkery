@@ -11,19 +11,21 @@ int penaltyRate = normalRate/5;
 int delayRate = normalRate;
 uint16_t initial = 500;
 uint16_t timer = initial;
-int wire0 = 2;
-int wire1 = 3;
-int wire2 = 4;
-int wire3 = 5;
-int wire4 = 6;
-int wire5 = 7;
-int wire6 = 8;
-int wire7 = 9;
-int RECV_PIN = 10;
-int buzzer = 11;
-int signallight = 12;
-int maglock = A0;
-int ppbutton = A1;
+const byte wire0 = A1;
+const byte wire1 = 3;
+const byte wire2 = 4;
+const byte wire3 = 5;
+const byte wire4 = 6;
+const byte wire5 = 7;
+const byte wire6 = 8;
+const byte wire7 = 9;
+const byte RECV_PIN = 10;
+const byte buzzer = 11;
+const byte signallight = 12;
+const byte maglock = A0;
+const byte RedLED = A2;
+const byte GreenLED = A3;
+const byte ppbutton = 2;
 int penaltyCounter = 0;
 bool flag0;
 bool flag1;
@@ -46,10 +48,10 @@ int flagsCap = 8;
 int digit = 0;
 int digitPlace = 0;
 int finalTime = 0;
-bool reset;
+unsigned long lastInterrupt = 0;
 bool pp;
+bool ppprime = false;
 Adafruit_7segment matrix = Adafruit_7segment();
-Adafruit_7segment matrix1 = Adafruit_7segment();
 IRrecv irrecv(RECV_PIN);
 
 decode_results results;
@@ -58,11 +60,8 @@ void setup() {
 #ifndef __AVR_ATtiny85__
   Serial.begin(9600);
   Serial.println("Oval Office");
-  irrecv.enableIRIn(); // Start the receiver
 #endif
   matrix.begin(0x70);
-  matrix1.begin(0x71);
-  matrix1.print(0xBEEF, HEX);
   pinMode(wire0, INPUT);
   pinMode(wire1, INPUT);
   pinMode(wire2, INPUT);
@@ -75,6 +74,9 @@ void setup() {
   pinMode(maglock, OUTPUT);
   pinMode(buzzer, OUTPUT);
   pinMode(ppbutton, INPUT);
+  pinMode(RedLED, OUTPUT);
+  pinMode(GreenLED, OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(ppbutton), pausePlay, RISING);
   flags[0] = &flag0;
   flags[1] = &flag1;
   flags[2] = &flag2;
@@ -84,37 +86,14 @@ void setup() {
   flags[6] = &flag6;
   flags[7] = &flag7;
   digitalWrite(signallight, HIGH);
-  digitalWrite(buzzer, HIGH);
+  digitalWrite(buzzer, LOW);
+  digitalWrite(RedLED, HIGH);
+  digitalWrite(GreenLED, LOW);
 }
 
 void loop() {
-
-  reset = digitalRead(RECV_PIN);
-  pp = digitalRead(ppbutton);
-  
-  if (RECV_PIN) {
-    if (flags0 && !flags1 && !flags2 && flags3 && !flags4 && !flags5 && !flags6 && !flags7){
-      timer = initial;
-      correct0 = false;
-      correct1 = false;
-      correct2 = false;
-      paused = true;
-      penalty = false;
-      penaltyCounter = 0;
-      deductionFlag = false;
-      lose = false;
-      results.value = 0;
-      digitalWrite(maglock, HIGH);
-      digitalWrite(signallight, HIGH);
-      digitalWrite(buzzer, HIGH);
-      escaped = false;
-    }
-  }
-
-  if (pp) {
-    paused = !paused;
-  }
-  
+  Serial.print("Paused is: ");
+  Serial.println(paused);
   /*if (irrecv.decode(&results)) {
     Serial.println(results.value, DEC);
     irrecv.resume(); // Receive the next value
@@ -236,11 +215,14 @@ void loop() {
   }
 
   if (penalty && !paused) {
+    Serial.println("PENALTY!");
     matrix.blinkRate(1);
     //matrix1.blinkRate(1);
     delayRate = penaltyRate;
-    //digitalWrite(buzzer, LOW);
-    NewTone(buzzer, 1000, 10);
+    digitalWrite(buzzer, HIGH);
+    digitalWrite(RedLED, LOW);
+    delay(50);
+    digitalWrite(RedLED, HIGH);
     /*if(!deductionFlag){
       if(penaltyCounter < 6){
         penaltyCounter++;
@@ -257,43 +239,47 @@ void loop() {
     matrix.blinkRate(0);
     //matrix1.blinkRate(0);
     delayRate = normalRate;
-    digitalWrite(buzzer, HIGH);
+    digitalWrite(buzzer, LOW);
     noNewTone(buzzer);
   }
   
-  /*Serial.println("Correct0 is ");
+  Serial.print("Correct0 is ");
   Serial.println(correct0);
-  Serial.println("Correct1 is ");
+  Serial.print("Correct1 is ");
   Serial.println(correct1);
-  Serial.println("Correct2 is ");
+  Serial.print("Correct2 is ");
   Serial.println(correct2);
-  Serial.println("Wire0 is ");
+  Serial.print("Wire0 is ");
   Serial.println(flag0);
-  Serial.println("Wire1 is ");
+  Serial.print("Wire1 is ");
   Serial.println(flag1);
-  Serial.println("Wire2 is ");
+  Serial.print("Wire2 is ");
   Serial.println(flag2);
-  Serial.println("Wire3 is ");
+  Serial.print("Wire3 is ");
   Serial.println(flag3);
-  Serial.println("Wire4 is ");
+  Serial.print("Wire4 is ");
   Serial.println(flag4);
-  Serial.println("Wire5 is ");
+  Serial.print("Wire5 is ");
   Serial.println(flag5);
-  Serial.println("Wire6 is ");
+  Serial.print("Wire6 is ");
   Serial.println(flag6);
-  Serial.println("Wire7 is ");
-  Serial.println(flag7);*/
+  Serial.print("Wire7 is ");
+  Serial.println(flag7);
 
   if(escaped){
     digitalWrite(maglock, LOW);
+    digitalWrite(GreenLED, HIGH);
+    digitalWrite(RedLED, LOW);
   }
   else{
     digitalWrite(maglock, HIGH);
+    digitalWrite(GreenLED, LOW);
+    digitalWrite(RedLED, HIGH);
   }
 
   if (lose) {
     digitalWrite(signallight, LOW);
-    digitalWrite(buzzer, LOW);
+    digitalWrite(buzzer, HIGH);
   }
   
   if(!paused) { //if not paused
@@ -312,12 +298,9 @@ void loop() {
     }
     else{
       matrix.print(timer, DEC);
-      matrix1.print(timer, DEC);
     }
     matrix.drawColon(true);
-    matrix1.drawColon(true);
     matrix.writeDisplay();
-    matrix1.writeDisplay();
     if (timer % 100 == 0) {
       timer -= 41;
     }
@@ -357,7 +340,35 @@ void loop() {
   }
 }
 
-void setTimer (){
+void pausePlay(){
+  if (millis() - lastInterrupt > 200){
+    Serial.println("INTERRUPT!");
+    if (flag0 && !flag1 && !flag2 && flag3 && !flag4 && !flag5 && !flag6 && !flag7){
+        timer = initial;
+        correct0 = false;
+        correct1 = false;
+        correct2 = false;
+        paused = true;
+        penalty = false;
+        penaltyCounter = 0;
+        deductionFlag = false;
+        lose = false;
+        results.value = 0;
+        digitalWrite(maglock, HIGH);
+        digitalWrite(signallight, HIGH);
+        digitalWrite(buzzer, LOW);
+        digitalWrite(RedLED, HIGH);
+        digitalWrite(GreenLED, LOW);
+        escaped = false;
+      }
+     else {
+        paused = !paused;
+     }
+     lastInterrupt = millis(); 
+  }
+}
+
+void setTimer(){
   boolean finished = false;
   matrix.print(0xFEED, HEX);
   //matrix1.print(0xFEED, HEX);
