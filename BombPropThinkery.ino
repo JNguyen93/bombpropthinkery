@@ -43,6 +43,7 @@ bool paused = true;
 bool deductionFlag = false;
 bool lose = false;
 bool* flags[8];
+bool programming = false;
 bool escaped = false;
 int flagsCap = 8;
 int digit = 0;
@@ -59,7 +60,7 @@ decode_results results;
 void setup() {
 #ifndef __AVR_ATtiny85__
   Serial.begin(9600);
-  Serial.println("Oval Office");
+  Serial.println("Thinkery Bomb");
 #endif
   matrix.begin(0x70);
   pinMode(wire0, INPUT);
@@ -92,83 +93,52 @@ void setup() {
 }
 
 void loop() {
-  Serial.print("Paused is: ");
-  Serial.println(paused);
+  //Serial.print("Paused is: ");
+  //Serial.println(paused);
   /*if (irrecv.decode(&results)) {
     Serial.println(results.value, DEC);
     irrecv.resume(); // Receive the next value
-  }
+  }*/
 
-  switch(results.value) {
-    case 551522415: //  Pause/Play
-      paused = !paused;
-      results.value = 0;
-      if (!paused) {
-        for(int a = 0; a < 3; a++){
-          digitalWrite(signallight, LOW);
-          delay(500);
-          digitalWrite(signallight, HIGH);
-          delay(500);
+  //remoteController();
+  readValues();
+  debug();
+
+  if (programming){
+    Serial.println("Entering programming mode.");
+    reset();
+    bool checked[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    bool* newFlags[8];
+    digitalWrite(RedLED, HIGH);
+    digitalWrite(GreenLED, HIGH);
+    matrix.print(0xFADE, HEX);
+    matrix.writeDisplay();
+    int counter = 7;
+    while(counter >= 0){
+      readValues();
+      Serial.print("Counter: ");
+      Serial.println(counter);
+      for(int i = 0; i < flagsCap; i++){
+        if(*flags[i] && !checked[i]){
+          newFlags[counter] = flags[i];
+          checked[i] = true;
+          counter--;
         }
       }
-      else{
-        digitalWrite(signallight, LOW);
-        delay(1000);
-        digitalWrite(signallight, HIGH);
-      }
-      //Serial.println("Signal Light On");
-      break;
-    case 551534655: //Subtract Time
-      timer -= 100;
-      results.value = 0;
-      break;
-    case 551502015: //Add Time
-      timer += 100;
-      results.value = 0;
-      break;
-    case 11815:   //Reset
-      timer = initial;
-      correct0 = false;
-      correct1 = false;
-      correct2 = false;
-      paused = true;
-      penalty = false;
-      penaltyCounter = 0;
-      deductionFlag = false;
-      lose = false;
-      results.value = 0;
-      digitalWrite(maglock, HIGH);
-      digitalWrite(signallight, HIGH);
-      digitalWrite(buzzer, HIGH);
-      escaped = false;
-      break;
-    case 551531085: //Set Time
-      setTimer();
-      results.value = 0;
-      break;
-    default:
-      results.value = 0;
-  }*/
+    }
+    flags[0] = newFlags[0];
+    flags[1] = newFlags[1];
+    flags[2] = newFlags[2];
+    flags[3] = newFlags[3];
+    flags[4] = newFlags[4];
+    flags[5] = newFlags[5];
+    flags[6] = newFlags[6];
+    flags[7] = newFlags[7];
+    programming = false;
+    Serial.println("Programming Complete");
+  }
   
-  //wire values
-  flag0 = digitalRead(wire0);
-  delay(10);
-  flag1 = digitalRead(wire1);
-  delay(10);
-  flag2 = digitalRead(wire2);
-  delay(10);
-  flag3 = digitalRead(wire3);
-  delay(10);
-  flag4 = digitalRead(wire4);
-  delay(10);
-  flag5 = digitalRead(wire5);
-  delay(10);
-  flag6 = digitalRead(wire6);
-  delay(10);
-  flag7 = digitalRead(wire7);
-  delay(10);
-
-  //Wire order - 4, 3, 7, 6
+  //Main Loop - Wire order - 4, 3, 7, 6
   penalty = false;
   for(int i = 0; i < flagsCap; i++){
     if(i <= 3){
@@ -214,99 +184,11 @@ void loop() {
     }
   }
 
-  if (penalty && !paused) {
-    Serial.println("PENALTY!");
-    matrix.blinkRate(1);
-    //matrix1.blinkRate(1);
-    delayRate = penaltyRate;
-    digitalWrite(buzzer, HIGH);
-    digitalWrite(RedLED, LOW);
-    delay(50);
-    digitalWrite(RedLED, HIGH);
-    /*if(!deductionFlag){
-      if(penaltyCounter < 6){
-        penaltyCounter++;
-      }
-      else{
-        penaltyCounter = 6;
-      }
-      timer = timer - ((penaltyCounter - 1) * 100);
-      deductionFlag = true;
-    }*/
-  }
-  else {
-    deductionFlag = false;
-    matrix.blinkRate(0);
-    //matrix1.blinkRate(0);
-    delayRate = normalRate;
-    digitalWrite(buzzer, LOW);
-    noNewTone(buzzer);
-  }
-  
-  Serial.print("Correct0 is ");
-  Serial.println(correct0);
-  Serial.print("Correct1 is ");
-  Serial.println(correct1);
-  Serial.print("Correct2 is ");
-  Serial.println(correct2);
-  Serial.print("Wire0 is ");
-  Serial.println(flag0);
-  Serial.print("Wire1 is ");
-  Serial.println(flag1);
-  Serial.print("Wire2 is ");
-  Serial.println(flag2);
-  Serial.print("Wire3 is ");
-  Serial.println(flag3);
-  Serial.print("Wire4 is ");
-  Serial.println(flag4);
-  Serial.print("Wire5 is ");
-  Serial.println(flag5);
-  Serial.print("Wire6 is ");
-  Serial.println(flag6);
-  Serial.print("Wire7 is ");
-  Serial.println(flag7);
-
-  if(escaped){
-    digitalWrite(maglock, LOW);
-    digitalWrite(GreenLED, HIGH);
-    digitalWrite(RedLED, LOW);
-  }
-  else{
-    digitalWrite(maglock, HIGH);
-    digitalWrite(GreenLED, LOW);
-    digitalWrite(RedLED, HIGH);
-  }
-
-  if (lose) {
-    digitalWrite(signallight, LOW);
-    digitalWrite(buzzer, HIGH);
-  }
+  checkWinLose();
   
   if(!paused) { //if not paused
-    
-    //countdown timer
-    //Serial.println(timer);
-    if (timer <= 0 || timer > 10000) {
-      matrix.writeDigitNum(0, 0);
-      matrix.writeDigitNum(1, 0);
-      matrix.writeDigitNum(3, 0);
-      matrix.writeDigitNum(4, 0);
-      //matrix1.writeDigitNum(0, 0);
-      //matrix1.writeDigitNum(1, 0);
-      //matrix1.writeDigitNum(3, 0);
-      //matrix1.writeDigitNum(4, 0);
-    }
-    else{
-      matrix.print(timer, DEC);
-    }
-    matrix.drawColon(true);
-    matrix.writeDisplay();
-    if (timer % 100 == 0) {
-      timer -= 41;
-    }
-    else {
-      timer -= 1;
-    }
+    checkPenalty();
+    updateTimer();
     if (timer <= 0 || timer > 10000) {
       paused = true;
       lose = true;
@@ -314,52 +196,63 @@ void loop() {
     delay(delayRate);
   }
   else { // if it is paused
-    if (timer <= 0 || timer > 10000) {
+    if (!flag0 && !flag1 && !flag2 && !flag3 && !flag4 && !flag5 && !flag6 && !flag7){
+      bool timeout = false;
+      unsigned long ref = millis();
+      while (!timeout){
+        if (millis() - ref > 5000){
+          timeout = true;
+        }
+        else{
+          bool button = digitalRead(ppbutton);
+          if (button){
+            programming = true;
+            timeout = true;
+            paused = false;
+          }
+        }
+      }
+    }
+    else if (timer <= 0 || timer > 10000) {
       matrix.writeDigitNum(0, 0);
       matrix.writeDigitNum(1, 0);
       matrix.writeDigitNum(3, 0);
       matrix.writeDigitNum(4, 0);
-      //matrix1.writeDigitNum(0, 0);
-      //matrix1.writeDigitNum(1, 0);
-      //matrix1.writeDigitNum(3, 0);
-      //matrix1.writeDigitNum(4, 0);
     }
     else {
       matrix.print(timer, DEC);
-      //matrix1.print(timer, DEC);
-      //noNewTone(buzzer);
     }
     penalty = false;
     matrix.drawColon(true);
-    //matrix1.drawColon(true);
     matrix.blinkRate(0);
-    //matrix1.blinkRate(0);
     matrix.writeDisplay();
-    //matrix1.writeDisplay();
     delay(1000);
   }
 }
 
+void reset(){
+  timer = initial;
+  correct0 = false;
+  correct1 = false;
+  correct2 = false;
+  paused = true;
+  penalty = false;
+  penaltyCounter = 0;
+  deductionFlag = false;
+  lose = false;
+  results.value = 0;
+  digitalWrite(maglock, HIGH);
+  digitalWrite(signallight, HIGH);
+  digitalWrite(buzzer, LOW);
+  digitalWrite(RedLED, HIGH);
+  digitalWrite(GreenLED, LOW);
+  escaped = false;
+}
 void pausePlay(){
   if (millis() - lastInterrupt > 200){
     Serial.println("INTERRUPT!");
     if (flag0 && !flag1 && !flag2 && flag3 && !flag4 && !flag5 && !flag6 && !flag7){
-        timer = initial;
-        correct0 = false;
-        correct1 = false;
-        correct2 = false;
-        paused = true;
-        penalty = false;
-        penaltyCounter = 0;
-        deductionFlag = false;
-        lose = false;
-        results.value = 0;
-        digitalWrite(maglock, HIGH);
-        digitalWrite(signallight, HIGH);
-        digitalWrite(buzzer, LOW);
-        digitalWrite(RedLED, HIGH);
-        digitalWrite(GreenLED, LOW);
-        escaped = false;
+        reset();
       }
      else {
         paused = !paused;
@@ -464,10 +357,171 @@ void processTimer (int x){
     digitPlace++;
   }
   matrix.print(finalTime, DEC);
- // matrix1.print(finalTime, DEC);
   matrix.drawColon(true);
-  //matrix1.drawColon(true);
   matrix.writeDisplay();
-  //matrix1.writeDisplay();
+}
+
+void remoteController(){
+   switch(results.value) {
+    case 551522415: //  Pause/Play
+      paused = !paused;
+      results.value = 0;
+      if (!paused) {
+        for(int a = 0; a < 3; a++){
+          digitalWrite(signallight, LOW);
+          delay(500);
+          digitalWrite(signallight, HIGH);
+          delay(500);
+        }
+      }
+      else{
+        digitalWrite(signallight, LOW);
+        delay(1000);
+        digitalWrite(signallight, HIGH);
+      }
+      //Serial.println("Signal Light On");
+      break;
+    case 551534655: //Subtract Time
+      timer -= 100;
+      results.value = 0;
+      break;
+    case 551502015: //Add Time
+      timer += 100;
+      results.value = 0;
+      break;
+    case 11815:   //Reset
+      timer = initial;
+      correct0 = false;
+      correct1 = false;
+      correct2 = false;
+      paused = true;
+      penalty = false;
+      penaltyCounter = 0;
+      deductionFlag = false;
+      lose = false;
+      results.value = 0;
+      digitalWrite(maglock, HIGH);
+      digitalWrite(signallight, HIGH);
+      digitalWrite(buzzer, HIGH);
+      escaped = false;
+      break;
+    case 551531085: //Set Time
+      setTimer();
+      results.value = 0;
+      break;
+    default:
+      results.value = 0;
+  }
+}
+
+void debug(){
+  Serial.print("Correct0 is ");
+  Serial.println(correct0);
+  Serial.print("Correct1 is ");
+  Serial.println(correct1);
+  Serial.print("Correct2 is ");
+  Serial.println(correct2);
+  Serial.print("Wire0 is ");
+  Serial.println(flag0);
+  Serial.print("Wire1 is ");
+  Serial.println(flag1);
+  Serial.print("Wire2 is ");
+  Serial.println(flag2);
+  Serial.print("Wire3 is ");
+  Serial.println(flag3);
+  Serial.print("Wire4 is ");
+  Serial.println(flag4);
+  Serial.print("Wire5 is ");
+  Serial.println(flag5);
+  Serial.print("Wire6 is ");
+  Serial.println(flag6);
+  Serial.print("Wire7 is ");
+  Serial.println(flag7);
+}
+
+void checkPenalty(){
+  if (penalty) {
+    Serial.println("PENALTY!");
+    matrix.blinkRate(1);
+    delayRate = penaltyRate;
+    digitalWrite(buzzer, HIGH);
+    digitalWrite(RedLED, LOW);
+    delay(50);
+    digitalWrite(RedLED, HIGH);
+    /*if(!deductionFlag){
+      if(penaltyCounter < 6){
+        penaltyCounter++;
+      }
+      else{
+        penaltyCounter = 6;
+      }
+      timer = timer - ((penaltyCounter - 1) * 100);
+      deductionFlag = true;
+    }*/
+  }
+  else {
+    deductionFlag = false;
+    matrix.blinkRate(0);
+    delayRate = normalRate;
+    digitalWrite(buzzer, LOW);
+    noNewTone(buzzer);
+  }
+}
+
+void checkWinLose(){
+  if(escaped){
+    digitalWrite(maglock, LOW);
+    digitalWrite(GreenLED, HIGH);
+    digitalWrite(RedLED, LOW);
+  }
+  else{
+    digitalWrite(maglock, HIGH);
+    digitalWrite(GreenLED, LOW);
+    digitalWrite(RedLED, HIGH);
+  }
+
+  if (lose) {
+    digitalWrite(signallight, LOW);
+    digitalWrite(buzzer, HIGH);
+  }
+}
+
+void readValues(){
+  flag0 = digitalRead(wire0);
+  delay(10);
+  flag1 = digitalRead(wire1);
+  delay(10);
+  flag2 = digitalRead(wire2);
+  delay(10);
+  flag3 = digitalRead(wire3);
+  delay(10);
+  flag4 = digitalRead(wire4);
+  delay(10);
+  flag5 = digitalRead(wire5);
+  delay(10);
+  flag6 = digitalRead(wire6);
+  delay(10);
+  flag7 = digitalRead(wire7);
+  delay(10);
+}
+
+void updateTimer(){
+  if (timer <= 0 || timer > 10000) {
+      matrix.writeDigitNum(0, 0);
+      matrix.writeDigitNum(1, 0);
+      matrix.writeDigitNum(3, 0);
+      matrix.writeDigitNum(4, 0);
+    }
+    else{
+      matrix.print(timer, DEC);
+    }
+    matrix.drawColon(true);
+    matrix.writeDisplay();
+    if (timer % 100 == 0) {
+      timer -= 41;
+    }
+    else {
+      timer -= 1;
+    }
 }
 
